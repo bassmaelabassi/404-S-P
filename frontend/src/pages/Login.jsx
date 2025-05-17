@@ -1,71 +1,62 @@
-import React from 'react';
-import { useForm } from 'react-hook-form';
-import { yupResolver } from '@hookform/resolvers/yup';
-import * as yup from 'yup';
-import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
-
-const loginSchema = yup.object().shape({
-  emailOrPhone: yup.string().required(' Email or phone number required'),
-  password: yup.string().required('Password required'),
-});
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../Context/AuthContext'
 
 const Login = () => {
-  const navigate = useNavigate();
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const { login } = useAuth()
+  const navigate = useNavigate()
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm({
-    resolver: yupResolver(loginSchema),
-  });
-
-  const onSubmit = async (data) => {
-    try {
-      const response = await axios.post('http://localhost:5000/api/auth/login', data);
-      const { token } = response.data;
-      localStorage.setItem('token', token);
-      alert('You have successfully logged in!');
-      navigate('/dashboard');
-    } catch (err) {
-      console.error(err.response?.data?.message || err.message);
-      alert(err.response?.data?.message || 'Login failed');
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    
+    const result = await login(email, password)
+    if (result.success) {
+      navigate('/profile')
+    } else {
+      setError(result.message)
     }
-  };
+  }
 
   return (
-    <div className="flex justify-center items-center min-h-screen bg-gray-100">
-      <form
-        onSubmit={handleSubmit(onSubmit)}
-        className="bg-white p-8 rounded-xl shadow-md w-full max-w-md space-y-4"
-      >
-        <h2 className="text-2xl font-bold text-center mb-4">Login</h2>
-
-        <div>
-          <label className="block mb-1 font-medium">email ou telephone</label>
-          <input {...register('emailOrPhone')} className="input" />
-          {errors.emailOrPhone && (
-            <p className="text-red-500 text-sm">{errors.emailOrPhone.message}</p>
-          )}
+    <div className="max-w-md mx-auto bg-white p-8 rounded shadow">
+      <h2 className="text-2xl font-bold mb-6">Login</h2>
+      {error && <div className="mb-4 text-red-500">{error}</div>}
+      <form onSubmit={handleSubmit}>
+        <div className="mb-4">
+          <label className="block text-gray-700 mb-2" htmlFor="email">Email</label>
+          <input
+            id="email"
+            type="email"
+            className="w-full p-2 border rounded"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
         </div>
-
-        <div>
-          <label className="block mb-1 font-medium">password</label>
-          <input type="password" {...register('password')} className="input" />
-          {errors.password && <p className="text-red-500 text-sm">{errors.password.message}</p>}
+        <div className="mb-4">
+          <label className="block text-gray-700 mb-2" htmlFor="password">Password</label>
+          <input
+            id="password"
+            type="password"
+            className="w-full p-2 border rounded"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
         </div>
-
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 transition"
-        >
-          {isSubmitting ? 'Logging in...' : 'Logging in'}
+        <button type="submit" className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">
+          Login
         </button>
       </form>
+      <div className="mt-4 text-center">
+        <Link to="/register" className="text-blue-500 hover:underline">Don't have an account? Register</Link>
+      </div>
     </div>
-  );
-};
+  )
+}
 
-export default Login;
+export default Login

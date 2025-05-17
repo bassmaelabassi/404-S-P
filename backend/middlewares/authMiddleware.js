@@ -1,36 +1,14 @@
-const { verifyToken } = require('../config/jwt');
-const User = require('../models/User');
+const jwt = require("jsonwebtoken");
 
-const protect = async (req, res, next) => {
-  let token;
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith('Bearer')
-  ) {
-    token = req.headers.authorization.split(' ')[1];
-  }
-
-  if (!token) {
-    return res.status(401).json({ message: 'Not authorized, no token' });
-  }
+module.exports = (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ message: "Access Denied" });
 
   try {
-    const decoded = verifyToken(token);
-    req.user = await User.findById(decoded.userId).select('-password');
+    const verified = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = verified;
     next();
-  } catch (error) {
-    console.error('Token verification error:', error);
-    res.status(401).json({ message: 'Not authorized, token failed' });
+  } catch (err) {
+    return res.status(401).json({ message: "Invalid Token" });
   }
 };
-
-const checkVerification = (req, res, next) => {
-  if (!req.user.isVerified.email || !req.user.isVerified.phone) {
-    return res.status(403).json({
-      message: 'Account not fully verified. Please verify your email and phone.',
-    });
-  }
-  next();
-};
-
-module.exports = { protect, checkVerification };

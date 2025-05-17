@@ -1,168 +1,100 @@
-const User = require('../models/User');
-const { generateToken } = require('../config/jwt');
-const { generateCode } = require('../utils/codeGenerator');
-const { sendEmail } = require('../services/emailService');
-const { sendSMS } = require('../services/smsService');
-const { validationResult } = require('express-validator');
+const User = require("../models/User");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const sendEmail = require("../utils/sendEmail");
+const generateToken = require("../utils/generateToken");
+
+function generateCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString(); // code 6 chiffres
+}
 
 exports.register = async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
-  const { username, email, phone, password } = req.body;
-
   try {
-    const existingUser = await User.findOne({ $or: [{ email }, { phone }, { username }] });
-    if (existingUser) {
-      return res.status(400).json({ message: 'User already exists with this email, phone, or username' });
-    }
-    const user = await User.create({ username, email, phone, password });
-    const emailCode = generateCode();
-    const smsCode = generateCode();
+    const { username, email, phone, password } = req.body;
 
-    user.verificationCode = emailCode;
-    user.verificationCodeExpires = Date.now() + 3600000;
-    await user.save();
-    await sendEmail(email, 'Email Verification', `Your verification code is: ${emailCode}`);
-    await sendSMS(phone, `Your verification code is: ${smsCode}`);
+    const exists = await User.findOne({ email });
+    if (exists) return res.status(400).json({ message: "Email déjà utilisé" });
 
-    res.status(201).json({
-      message: 'User registered successfully. Verification codes sent.',
-      userId: user._id,
+    const hashed = await bcrypt.hash(password, 10);
+    const code = generateCode();
+
+    const user = await User.create({
+      username,
+      email,
+      phone,
+      password: hashed,
+      verificationCode: code,
     });
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ message: 'Server error during registration' });
+
+    sendEmail(email, "Code de vérification", `Votre code : ${code}`);
+
+    res.status(201).json({ message: "Utilisateur créé. Vérifiez votre email." });
+  } catch (err) {
+    res.status(500).json({ message: "Erreur serveur", error: err.message });
   }
 };
 
-exports.verify = async (req, res) => {
-  const { code } = req.body;
-  const { userId } = req.params;
+exports.verifyAccount = async (req, res) => {
+  const { email, code } = req.body;
 
-  try {
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+  const user = await User.findOne({ email });
+  if (!user) return res.status(404).json({ message: "Utilisateur non trouvé" });
 
-    if (user.verificationCode !== code) {
-      return res.status(400).json({ message: 'Invalid verification code' });
-    }
+  if (user.verified) return res.status(400).json({ message: "Déjà vérifié" });
 
-    if (user.verificationCodeExpires < Date.now()) {
-      return res.status(400).json({ message: 'Verification code has expired' });
-    }
+  if (user.verificationCode !== code)
+    return res.status(400).json({ message: "Code incorrect" });
 
-    if (code.length === 6) {
-      user.isVerified.email = true;
-    } else {
-      user.isVerified.phone = true;
-    }
+  user.verified = true;
+  user.verificationCode = undefined;
+  await user.save();
 
-    user.verificationCode = undefined;
-    user.verificationCodeExpires = undefined;
-    await user.save();
-
-    res.status(200).json({ message: 'Verification successful' });
-  } catch (error) {
-    console.error('Verification error:', error);
-    res.status(500).json({ message: 'Server error during verification' });
-  }
+  res.json({ message: "Compte vérifié avec succès" });
 };
 
 exports.login = async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
   const { email, password } = req.body;
 
-  try {
-    const user = await User.findOne({ email }).select('+password');
-    if (!user) {
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
+  const user = await User.findOne({ email });
+  if (!user) return res.status(404).json({ message: "Utilisateur non trouvé" });
 
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
+  if (!user.verified) return res.status(403).json({ message: "Compte non vérifié" });
 
-    if (!user.isVerified.email || !user.isVerified.phone) {
-      return res.status(403).json({
-        message: 'Account not fully verified. Please verify your email and phone.',
-      });
-    }
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) return res.status(401).json({ message: "Mot de passe incorrect" });
 
-    const token = generateToken(user._id, user.role);
-
-    res.status(200).json({
-      token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-      },
-    });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ message: 'Server error during login' });
-  }
+  const token = generateToken(user);
+  res.json({ message: "Connecté", token });
 };
+
 exports.forgotPassword = async (req, res) => {
   const { email } = req.body;
 
-  try {
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+  const user = await User.findOne({ email });
+  if (!user) return res.status(404).json({ message: "Utilisateur non trouvé" });
 
-    const resetCode = generateCode();
-    user.passwordResetCode = resetCode;
-    user.passwordResetExpires = Date.now() + 3600000; // 1 hour
-    await user.save();
+  const code = generateCode();
+  user.resetPasswordCode = code;
+  await user.save();
 
-    await sendEmail(email, 'Password Reset', `Your password reset code is: ${resetCode}`);
+  sendEmail(email, "Code de réinitialisation", `Code : ${code}`);
 
-    res.status(200).json({ message: 'Password reset code sent to email' });
-  } catch (error) {
-    console.error('Forgot password error:', error);
-    res.status(500).json({ message: 'Server error during forgot password process' });
-  }
+  res.json({ message: "Code envoyé par email" });
 };
+
 exports.resetPassword = async (req, res) => {
-  const { code, newPassword } = req.body;
-  const { email } = req.params;
+  const { email, code, newPassword } = req.body;
 
-  try {
-    const user = await User.findOne({ email }).select('+passwordResetCode');
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+  const user = await User.findOne({ email });
+  if (!user) return res.status(404).json({ message: "Utilisateur non trouvé" });
 
-    if (user.passwordResetCode !== code) {
-      return res.status(400).json({ message: 'Invalid reset code' });
-    }
+  if (user.resetPasswordCode !== code)
+    return res.status(400).json({ message: "Code invalide" });
 
-    if (user.passwordResetExpires < Date.now()) {
-      return res.status(400).json({ message: 'Reset code has expired' });
-    }
+  const hashed = await bcrypt.hash(newPassword, 10);
+  user.password = hashed;
+  user.resetPasswordCode = undefined;
+  await user.save();
 
-    user.password = newPassword;
-    user.passwordResetCode = undefined;
-    user.passwordResetExpires = undefined;
-    await user.save();
-
-    res.status(200).json({ message: 'Password reset successfully' });
-  } catch (error) {
-    console.error('Reset password error:', error);
-    res.status(500).json({ message: 'Server error during password reset' });
-  }
+  res.json({ message: "Mot de passe réinitialisé avec succès" });
 };

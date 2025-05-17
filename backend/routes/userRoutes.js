@@ -1,20 +1,65 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const userController = require('../controllers/userController');
-const { protect, checkVerification } = require('../middlewares/authMiddleware');
-const { body } = require('express-validator');
+const { body } = require("express-validator");
 
-router.use(protect);
-router.use(checkVerification);
-router.get('/profile', userController.getProfile);
+const {
+  getProfile,
+  updateUsername,
+  updateEmail,
+  verifyNewEmail,
+  updatePhone,
+  verifyNewPhone,
+} = require("../controllers/userController");
+
+const authMiddleware = require("../middlewares/authMiddleware");
+const validate = require("../middlewares/validatorMiddleware");
+
+router.get("/profile", authMiddleware, getProfile);
+
 router.put(
-  '/profile',
+  "/update-username",
+  authMiddleware,
+  [body("username").notEmpty().withMessage("Nom requis")],
+  validate,
+  updateUsername
+);
+
+router.post(
+  "/update-email",
+  authMiddleware,
+  [body("newEmail").isEmail().withMessage("Email invalide")],
+  validate,
+  updateEmail
+);
+
+router.post(
+  "/verify-email",
+  authMiddleware,
   [
-    body('username').optional().trim().isLength({ min: 3 }).withMessage('Username must be at least 3 characters'),
-    body('email').optional().isEmail().withMessage('Please enter a valid email'),
-    body('phone').optional().isMobilePhone().withMessage('Please enter a valid phone number'),
+    body("code").notEmpty().withMessage("Code requis"),
+    body("newEmail").isEmail().withMessage("Email requis"),
   ],
-  userController.updateProfile
+  validate,
+  verifyNewEmail
+);
+
+router.post(
+  "/update-phone",
+  authMiddleware,
+  [body("newPhone").notEmpty().withMessage("Téléphone requis")],
+  validate,
+  updatePhone
+);
+
+router.post(
+  "/verify-phone",
+  authMiddleware,
+  [
+    body("code").notEmpty().withMessage("Code requis"),
+    body("newPhone").notEmpty().withMessage("Téléphone requis"),
+  ],
+  validate,
+  verifyNewPhone
 );
 
 module.exports = router;

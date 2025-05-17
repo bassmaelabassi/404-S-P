@@ -1,89 +1,98 @@
-const User = require('../models/User');
-const { validationResult } = require('express-validator');
+const User = require("../models/User");
+const sendEmail = require("../utils/sendEmail");
+
+function generateCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 exports.getProfile = async (req, res) => {
-  try {
-    const user = await User.findById(req.user._id).select('-password');
-    res.status(200).json(user);
-  } catch (error) {
-    console.error('Get profile error:', error);
-    res.status(500).json({ message: 'Server error getting profile' });
-  }
+  const user = await User.findById(req.user.id).select("-password");
+  res.json(user);
 };
 
-exports.updateProfile = async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
+exports.updateUsername = async (req, res) => {
+  const user = await User.findById(req.user.id);
+  const oldUsername = user.username;
+  user.username = req.body.username;
 
-  const { username, email, phone } = req.body;
-  const updates = {};
-  const changeHistory = [];
+  await user.save();
 
-  try {
-    const user = await User.findById(req.user._id);
-    if (username && username !== user.username) {
-      const existingUser = await User.findOne({ username });
-      if (existingUser) {
-        return res.status(400).json({ message: 'Username already taken' });
-      }
-      changeHistory.push({
-        field: 'username',
-        oldValue: user.username,
-        newValue: username,
-      });
-      updates.username = username;
-    }
+  user.history.push({
+    field: "username",
+    oldValue: oldUsername,
+    newValue: req.body.username,
+  });
+  await user.save();
 
-    if (email && email !== user.email) {
-      const existingUser = await User.findOne({ email });
-      if (existingUser) {
-        return res.status(400).json({ message: 'Email already in use' });
-      }
-      changeHistory.push({
-        field: 'email',
-        oldValue: user.email,
-        newValue: email,
-      });
-      updates.email = email;
-      updates.isVerified.email = false;
-    }
+  res.json({ message: "Nom modifié avec succès" });
+};
 
-    if (phone && phone !== user.phone) {
-      const existingUser = await User.findOne({ phone });
-      if (existingUser) {
-        return res.status(400).json({ message: 'Phone number already in use' });
-      }
-      changeHistory.push({
-        field: 'phone',
-        oldValue: user.phone,
-        newValue: phone,
-      });
-      updates.phone = phone;
-      updates.isVerified.phone = false;
-    }
+exports.updateEmail = async (req, res) => {
+  const code = generateCode();
+  const { newEmail } = req.body;
 
-    if (changeHistory.length === 0) {
-      return res.status(400).json({ message: 'No changes detected' });
-    }
+  const user = await User.findById(req.user.id);
+  user.tempEmail = newEmail;
+  user.emailVerificationCode = code;
 
-    Object.assign(user, updates);
-    user.changeHistory.push(...changeHistory);
-    await user.save();
+  await user.save();
+  sendEmail(newEmail, "Code de confirmation email", `Code : ${code}`);
 
-    res.status(200).json({
-      message: 'Profile updated successfully',
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        phone: user.phone,
-        isVerified: user.isVerified,
-      },
-    });
-  } catch (error) {
-    console.error('Update profile error:', error);
-    res.status(500).json({ message: 'Server error updating profile' });
-  }
+  res.json({ message: "Code envoyé au nouvel email" });
+};
+
+exports.verifyNewEmail = async (req, res) => {
+  const { code, newEmail } = req.body;
+  const user = await User.findById(req.user.id);
+
+  if (user.emailVerificationCode !== code || user.tempEmail !== newEmail)
+    return res.status(400).json({ message: "Code ou email invalide" });
+
+  user.history.push({
+    field: "email",
+    oldValue: user.email,
+    newValue: newEmail,
+  });
+
+  user.email = newEmail;
+  user.tempEmail = undefined;
+  user.emailVerificationCode = undefined;
+  await user.save();
+
+  res.json({ message: "Email mis à jour" });
+};
+
+exports.updatePhone = async (req, res) => {
+  const { newPhone } = req.body;
+  const code = generateCode();
+
+  const user = await User.findById(req.user.id);
+  user.tempPhone = newPhone;
+  user.phoneVerificationCode = code;
+
+  await user.save();
+  console.log(`Code de vérification envoyé à ${newPhone} : ${code}`);
+
+  res.json({ message: "Code envoyé au téléphone (mock)" });
+};
+
+exports.verifyNewPhone = async (req, res) => {
+  const { code, newPhone } = req.body;
+  const user = await User.findById(req.user.id);
+
+  if (user.phoneVerificationCode !== code || user.tempPhone !== newPhone)
+    return res.status(400).json({ message: "Code ou téléphone invalide" });
+
+  user.history.push({
+    field: "phone",
+    oldValue: user.phone,
+    newValue: newPhone,
+  });
+
+  user.phone = newPhone;
+  user.tempPhone = undefined;
+  user.phoneVerificationCode = undefined;
+  await user.save();
+
+  res.json({ message: "Téléphone mis à jour" });
 };

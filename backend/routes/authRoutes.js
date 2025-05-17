@@ -1,40 +1,67 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const authController = require('../controllers/authController');
-const { body } = require('express-validator');
+const { body } = require("express-validator");
+
+const {
+  register,
+  verifyAccount,
+  login,
+  forgotPassword,
+  resetPassword,
+} = require("../controllers/authController");
+
+const validate = require("../middlewares/validatorMiddleware");
 
 router.post(
-  '/register',
+  "/register",
   [
-    body('username').trim().isLength({ min: 3 }).withMessage('Username must be at least 3 characters'),
-    body('email').isEmail().withMessage('Please enter a valid email'),
-    body('phone').isMobilePhone().withMessage('Please enter a valid phone number'),
-    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+    body("username").notEmpty().withMessage("Nom requis"),
+    body("email").isEmail().withMessage("Email invalide"),
+    body("phone").notEmpty().withMessage("Téléphone requis"),
+    body("password").isLength({ min: 6 }).withMessage("Mot de passe min 6 caractères"),
   ],
-  authController.register
+  validate,
+  register
 );
 
-router.post('/verify/:userId', authController.verify);
 router.post(
-  '/login',
+  "/verify",
   [
-    body('email').isEmail().withMessage('Please enter a valid email'),
-    body('password').exists().withMessage('Password is required'),
+    body("email").isEmail().withMessage("Email invalide"),
+    body("code").notEmpty().withMessage("Code requis"),
   ],
-  authController.login
+  validate,
+  verifyAccount
 );
+
 router.post(
-  '/forgot-password',
-  [body('email').isEmail().withMessage('Please enter a valid email')],
-  authController.forgotPassword
-);
-router.post(
-  '/reset-password/:email',
+  "/login",
   [
-    body('code').exists().withMessage('Reset code is required'),
-    body('newPassword').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+    body("email").isEmail().withMessage("Email invalide"),
+    body("password").notEmpty().withMessage("Mot de passe requis"),
   ],
-  authController.resetPassword
+  validate,
+  login
+);
+
+router.post(
+  "/forgot-password",
+  [
+    body("email").isEmail().withMessage("Email invalide"),
+  ],
+  validate,
+  forgotPassword
+);
+
+router.post(
+  "/reset-password",
+  [
+    body("email").isEmail().withMessage("Email invalide"),
+    body("code").notEmpty().withMessage("Code requis"),
+    body("newPassword").isLength({ min: 6 }).withMessage("Nouveau mot de passe requis"),
+  ],
+  validate,
+  resetPassword
 );
 
 module.exports = router;

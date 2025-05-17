@@ -1,100 +1,71 @@
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const sendEmail = require("../utils/sendEmail");
-const generateToken = require("../utils/generateToken");
-
-function generateCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString(); // code 6 chiffres
-}
+const { validationResult } = require("express-validator");
+const sendConfirmationEmail = require("../utils/sendConfirmationEmail");
 
 exports.register = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const { username, email, phone, password } = req.body;
+
   try {
-    const { username, email, phone, password } = req.body;
+    const existing = await User.findOne({ email });
+    if (existing) return res.status(400).json({ msg: "Email déjà utilisé." });
 
-    const exists = await User.findOne({ email });
-    if (exists) return res.status(400).json({ message: "Email déjà utilisé" });
-
-    const hashed = await bcrypt.hash(password, 10);
-    const code = generateCode();
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await User.create({
       username,
       email,
       phone,
-      password: hashed,
-      verificationCode: code,
+      password: hashedPassword,
+      isConfirmed: false,
     });
 
-    sendEmail(email, "Code de vérification", `Votre code : ${code}`);
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "1d" });
 
-    res.status(201).json({ message: "Utilisateur créé. Vérifiez votre email." });
+    await sendConfirmationEmail(user.email, token);
+
+    res.status(201).json({ msg: "Compte créé. Vérifiez votre email pour confirmer." });
   } catch (err) {
-    res.status(500).json({ message: "Erreur serveur", error: err.message });
+    res.status(500).json({ msg: "Erreur serveur", err });
   }
 };
 
-exports.verifyAccount = async (req, res) => {
-  const { email, code } = req.body;
+exports.confirmEmail = async (req, res) => {
+  const token = req.params.token;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+    if (!user) return res.status(404).json({ msg: "Utilisateur introuvable." });
 
-  const user = await User.findOne({ email });
-  if (!user) return res.status(404).json({ message: "Utilisateur non trouvé" });
+    user.isConfirmed = true;
+    await user.save();
 
-  if (user.verified) return res.status(400).json({ message: "Déjà vérifié" });
-
-  if (user.verificationCode !== code)
-    return res.status(400).json({ message: "Code incorrect" });
-
-  user.verified = true;
-  user.verificationCode = undefined;
-  await user.save();
-
-  res.json({ message: "Compte vérifié avec succès" });
+    res.status(200).json({ msg: "Email confirmé. Vous pouvez vous connecter." });
+  } catch (err) {
+    res.status(400).json({ msg: "Lien invalide ou expiré." });
+  }
 };
 
 exports.login = async (req, res) => {
   const { email, password } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (!user || !(await bcrypt.compare(password, user.password)))
+      return res.status(400).json({ msg: "Email ou mot de passe incorrect." });
 
-  const user = await User.findOne({ email });
-  if (!user) return res.status(404).json({ message: "Utilisateur non trouvé" });
+    if (!user.isConfirmed)
+      return res.status(401).json({ msg: "Veuillez confirmer votre email." });
 
-  if (!user.verified) return res.status(403).json({ message: "Compte non vérifié" });
+    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
 
-  const isMatch = await bcrypt.compare(password, user.password);
-  if (!isMatch) return res.status(401).json({ message: "Mot de passe incorrect" });
-
-  const token = generateToken(user);
-  res.json({ message: "Connecté", token });
-};
-
-exports.forgotPassword = async (req, res) => {
-  const { email } = req.body;
-
-  const user = await User.findOne({ email });
-  if (!user) return res.status(404).json({ message: "Utilisateur non trouvé" });
-
-  const code = generateCode();
-  user.resetPasswordCode = code;
-  await user.save();
-
-  sendEmail(email, "Code de réinitialisation", `Code : ${code}`);
-
-  res.json({ message: "Code envoyé par email" });
-};
-
-exports.resetPassword = async (req, res) => {
-  const { email, code, newPassword } = req.body;
-
-  const user = await User.findOne({ email });
-  if (!user) return res.status(404).json({ message: "Utilisateur non trouvé" });
-
-  if (user.resetPasswordCode !== code)
-    return res.status(400).json({ message: "Code invalide" });
-
-  const hashed = await bcrypt.hash(newPassword, 10);
-  user.password = hashed;
-  user.resetPasswordCode = undefined;
-  await user.save();
-
-  res.json({ message: "Mot de passe réinitialisé avec succès" });
+    res.json({ token, user: { id: user._id, username: user.username, role: user.role } });
+  } catch (err) {
+    res.status(500).json({ msg: "Erreur serveur" });
+  }
 };

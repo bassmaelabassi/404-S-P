@@ -1,98 +1,54 @@
 const User = require("../models/User");
-const sendEmail = require("../utils/sendEmail");
-
-function generateCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
+const ChangeLog = require("../models/ChangeLog");
+const { validationResult } = require("express-validator");
 
 exports.getProfile = async (req, res) => {
   const user = await User.findById(req.user.id).select("-password");
+  if (!user) return res.status(404).json({ msg: "Utilisateur non trouvé" });
   res.json(user);
 };
 
-exports.updateUsername = async (req, res) => {
+exports.updateProfile = async (req, res) => {
   const user = await User.findById(req.user.id);
-  const oldUsername = user.username;
-  user.username = req.body.username;
+  if (!user) return res.status(404).json({ msg: "Utilisateur non trouvé" });
+
+  const { username, email, phone } = req.body;
+  const changes = [];
+
+  if (username && username !== user.username) {
+    changes.push({ field: "username", oldValue: user.username, newValue: username });
+    user.username = username;
+  }
+
+  if (email && email !== user.email) {
+    changes.push({ field: "email", oldValue: user.email, newValue: email });
+    user.email = email;
+    user.isConfirmed = false;
+    // TODO: resend confirmation link
+  }
+
+  if (phone && phone !== user.phone) {
+    changes.push({ field: "phone", oldValue: user.phone, newValue: phone });
+    user.phone = phone;
+    user.isConfirmed = false;
+    // TODO: resend confirmation
+  }
 
   await user.save();
 
-  user.history.push({
-    field: "username",
-    oldValue: oldUsername,
-    newValue: req.body.username,
-  });
-  await user.save();
+  for (const change of changes) {
+    await ChangeLog.create({ ...change, userId: user._id });
+  }
 
-  res.json({ message: "Nom modifié avec succès" });
+  res.json({ msg: "Profil mis à jour", user: { username: user.username, email: user.email, phone: user.phone } });
 };
 
-exports.updateEmail = async (req, res) => {
-  const code = generateCode();
-  const { newEmail } = req.body;
-
-  const user = await User.findById(req.user.id);
-  user.tempEmail = newEmail;
-  user.emailVerificationCode = code;
-
-  await user.save();
-  sendEmail(newEmail, "Code de confirmation email", `Code : ${code}`);
-
-  res.json({ message: "Code envoyé au nouvel email" });
+exports.getAllUsers = async (req, res) => {
+  const users = await User.find().select("-password");
+  res.json(users);
 };
 
-exports.verifyNewEmail = async (req, res) => {
-  const { code, newEmail } = req.body;
-  const user = await User.findById(req.user.id);
-
-  if (user.emailVerificationCode !== code || user.tempEmail !== newEmail)
-    return res.status(400).json({ message: "Code ou email invalide" });
-
-  user.history.push({
-    field: "email",
-    oldValue: user.email,
-    newValue: newEmail,
-  });
-
-  user.email = newEmail;
-  user.tempEmail = undefined;
-  user.emailVerificationCode = undefined;
-  await user.save();
-
-  res.json({ message: "Email mis à jour" });
-};
-
-exports.updatePhone = async (req, res) => {
-  const { newPhone } = req.body;
-  const code = generateCode();
-
-  const user = await User.findById(req.user.id);
-  user.tempPhone = newPhone;
-  user.phoneVerificationCode = code;
-
-  await user.save();
-  console.log(`Code de vérification envoyé à ${newPhone} : ${code}`);
-
-  res.json({ message: "Code envoyé au téléphone (mock)" });
-};
-
-exports.verifyNewPhone = async (req, res) => {
-  const { code, newPhone } = req.body;
-  const user = await User.findById(req.user.id);
-
-  if (user.phoneVerificationCode !== code || user.tempPhone !== newPhone)
-    return res.status(400).json({ message: "Code ou téléphone invalide" });
-
-  user.history.push({
-    field: "phone",
-    oldValue: user.phone,
-    newValue: newPhone,
-  });
-
-  user.phone = newPhone;
-  user.tempPhone = undefined;
-  user.phoneVerificationCode = undefined;
-  await user.save();
-
-  res.json({ message: "Téléphone mis à jour" });
+exports.getChangeHistory = async (req, res) => {
+  const logs = await ChangeLog.find().populate("userId", "email username").sort({ changedAt: -1 });
+  res.json(logs);
 };

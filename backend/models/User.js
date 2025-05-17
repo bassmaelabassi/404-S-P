@@ -1,37 +1,12 @@
 const mongoose = require("mongoose");
 
-const historySchema = new mongoose.Schema({
-  field: String,
-  oldValue: String,
-  newValue: String,
-  date: {
-    type: Date,
-    default: Date.now,
-  },
-});
-
 const userSchema = new mongoose.Schema({
-  username: String,
-  email: String,
-  phone: String,
-  password: String,
-  verified: {
-    type: Boolean,
-    default: false,
-  },
-  verificationCode: String,
-  resetPasswordCode: String,
-  role: {
-    type: String,
-    default: "user",
-  },
-  
-  tempEmail: String,
-  emailVerificationCode: String,
-  tempPhone: String,
-  phoneVerificationCode: String,
-
-  history: [historySchema],
-});
+  username: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true },
+  phone: { type: String },
+  password: { type: String, required: true },
+  isConfirmed: { type: Boolean, default: false },
+  role: { type: String, enum: ["user", "admin"], default: "user" },
+}, { timestamps: true });
 
 module.exports = mongoose.model("User", userSchema);

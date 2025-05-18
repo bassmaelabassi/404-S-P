@@ -1,37 +1,59 @@
-import { Link } from 'react-router-dom'
-import { useAuth } from '../Context/AuthContext'
+import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import api from '../services/api';
 
 const Navbar = () => {
-  const { user, logout, loading } = useAuth()
+  const [user, setUser] = useState(null);
+  const navigate = useNavigate();
 
-  if (loading) {
-    return <div className="bg-gray-800 text-white p-4">Loading...</div>
-  }
+  useEffect(() => {
+    api.get('/auth/me/session')
+      .then(res => setUser(res.data))
+      .catch(() => setUser(null));
+  }, []);
+
+  const handleLogout = () => {
+    api.post('/auth/logout')
+      .then(() => {
+        setUser(null);
+        navigate('/login');
+      })
+      .catch(err => console.error(err));
+  };
 
   return (
-    <nav className="bg-gray-800 text-white p-4">
-      <div className="container mx-auto flex justify-between items-center">
-        <Link to="/" className="text-xl font-bold">Auth App</Link>
-        
-        <div className="flex space-x-4">
-          {user ? (
-            <>
-              <Link to="/profile" className="hover:text-gray-300">Profile</Link>
-              {user.role === 'admin' && (
-                <Link to="/admin/users" className="hover:text-gray-300">Admin</Link>
-              )}
-              <button onClick={logout} className="hover:text-gray-300">Logout</button>
-            </>
-          ) : (
-            <>
-              <Link to="/login" className="hover:text-gray-300">Login</Link>
-              <Link to="/register" className="hover:text-gray-300">Register</Link>
-            </>
-          )}
-        </div>
+    <nav className="bg-gray-800 p-7 flex justify-between items-center">
+      <h1 className="text-amber-500 text-xl font-bold">AuthApp</h1>
+      <div className="flex space-x-4">
+        <Link to="/">
+          <button className="bg-amber-500 text-white px-3 py-1 rounded hover:bg-amber-600">Home</button>
+        </Link>
+
+        {user ? (
+          <>
+            <Link to="/profile">
+              <button className="bg-amber-500 text-white px-3 py-1 rounded hover:bg-amber-600">Profil</button>
+            </Link>
+            <button
+              onClick={handleLogout}
+              className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+            >
+              Logout
+            </button>
+          </>
+        ) : (
+          <>
+            <Link to="/login">
+              <button className="bg-amber-500 text-white px-3 py-1 rounded hover:bg-amber-600">Login</button>
+            </Link>
+            <Link to="/register">
+              <button className="bg-amber-500 text-white px-3 py-1 rounded hover:bg-amber-600">Register</button>
+            </Link>
+          </>
+        )}
       </div>
     </nav>
-  )
-}
+  );
+};
 
-export default Navbar
+export default Navbar;

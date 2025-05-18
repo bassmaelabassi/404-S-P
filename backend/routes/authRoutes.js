@@ -1,19 +1,26 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const { register, login, confirmEmail } = require("../controllers/authController");
-const { body } = require("express-validator");
+const authCtrl = require('../controllers/authController');
+const { registerValidator, loginValidator } = require('../validators/authValidator');
+const authBasic = require('../middlewares/authBasic');
+const authSession = require('../middlewares/authSession');
+const authJWT = require('../middlewares/authJWT');
 
-router.post(
-  "/register",
-  [
-    body("username").isLength({ min: 3 }).withMessage("Nom trop court"),
-    body("email").isEmail().withMessage("Email invalide"),
-    body("password").isLength({ min: 6 }).withMessage("Mot de passe trop court"),
-  ],
-  register
-);
+router.post('/register', registerValidator, authCtrl.register);
+router.post('/login', loginValidator, authCtrl.login);
+router.get('/logout', authCtrl.logout);
 
-router.post("/login", login);
-router.get("/confirm/:token", confirmEmail);
+router.get('/verify-email/:token', authCtrl.verifyEmail);
+router.post('/resend-verification', authCtrl.resendVerification);
+router.post('/verify-phone', authJWT, authCtrl.verifyPhone);
+
+router.post('/forgot-password', authCtrl.forgotPassword);
+router.post('/reset-password/:token', authCtrl.resetPassword);
+
+router.put('/profile', authJWT, authCtrl.updateProfile); 
+
+router.get('/me/basic', authBasic, authCtrl.getMe);
+router.get('/me/jwt', authJWT, authCtrl.getMe);
+router.get('/me/session', authSession, authCtrl.getMe);
 
 module.exports = router;

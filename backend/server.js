@@ -1,27 +1,38 @@
-require("dotenv").config();
-const express = require("express");
-const mongoose = require("mongoose");
-const morgan = require("morgan");
-const cors = require("cors");
+const express = require('express');
+const dotenv = require('dotenv');
+const connectDB = require('./config/db');
+const session = require('express-session');
+const cors = require('cors');
+const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
+const errorHandler = require('./middlewares/errorHandler');
 
-const authRoutes = require("./routes/authRoutes");
-const userRoutes = require("./routes/userRoutes");
+dotenv.config();
+connectDB();
 
 const app = express();
 
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:5174'],
+  credentials: true
+}));
+
 app.use(express.json());
-app.use(morgan("dev"));
-app.use(cors());
 
-app.use("/api/auth", authRoutes);
-app.use("/api/user", userRoutes);
+app.use(session({
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: { 
+    secure: process.env.NODE_ENV === 'production', 
+    httpOnly: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000 
+  }
+}));
 
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log("✅ MongoDB connected");
-    app.listen(process.env.PORT || 5000, () => {
-      console.log("🚀 Server running on port " + process.env.PORT);
-    });
-  })
-  .catch((err) => console.log("MongoDB Error:", err));
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use(errorHandler);
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Serveur démarré sur le port ${PORT}`));

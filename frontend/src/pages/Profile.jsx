@@ -1,97 +1,111 @@
-import { useState, useEffect } from 'react'
-import { useAuth } from '../Context/AuthContext'
+import { useState } from "react";
 
 const Profile = () => {
-  const { user, updateProfile } = useAuth()
-  const [formData, setFormData] = useState({
-    username: '',
-    email: '',
-    phone: ''
-  })
-  const [message, setMessage] = useState('')
-  const [error, setError] = useState('')
+  // Données initiales de l'utilisateur (par exemple, depuis un contexte ou des props)
+  const utilisateurInitial = {
+    nom: "John Doe",
+    email: "john@example.com",
+    telephone: "0600000000",
+  };
 
-  useEffect(() => {
-    if (user) {
-      setFormData({
-        username: user.username,
-        email: user.email,
-        phone: user.phone || ''
-      })
-    }
-  }, [user])
+  const [utilisateur, setUtilisateur] = useState(utilisateurInitial);
+  const [formulaire, setFormulaire] = useState(utilisateurInitial);
+  const [erreurs, setErreurs] = useState({});
+  const [enEdition, setEnEdition] = useState(false);
 
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    })
-  }
+  // Fonction simple pour valider les données
+  const valider = () => {
+    const nouvellesErreurs = {};
+    if (!formulaire.nom.trim()) nouvellesErreurs.nom = "Le nom est obligatoire";
+    if (!formulaire.email.includes("@")) nouvellesErreurs.email = "Email invalide";
+    if (!formulaire.telephone.match(/^\d{10}$/)) nouvellesErreurs.telephone = "Le numéro doit contenir 10 chiffres";
+    return nouvellesErreurs;
+  };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setMessage('')
-    setError('')
-    
-    const result = await updateProfile(formData)
-    if (result.success) {
-      setMessage('Profile updated successfully!')
+  const gererChangement = (e) => {
+    setFormulaire({ ...formulaire, [e.target.name]: e.target.value });
+  };
+
+  const gererSoumission = (e) => {
+    e.preventDefault();
+    const erreursValidation = valider();
+    if (Object.keys(erreursValidation).length === 0) {
+      setUtilisateur(formulaire);
+      setEnEdition(false);
+      setErreurs({});
+      alert("Profil mis à jour avec succès");
     } else {
-      setError(result.message)
+      setErreurs(erreursValidation);
     }
-  }
+  };
 
-  if (!user) return <div>Loading...</div>
+  const gererAnnulation = () => {
+    setFormulaire(utilisateur);
+    setErreurs({});
+    setEnEdition(false);
+  };
 
   return (
-    <div className="max-w-md mx-auto bg-white p-8 rounded shadow">
-      <h2 className="text-2xl font-bold mb-6">Profile</h2>
-      {message && <div className="mb-4 p-2 bg-green-100 text-green-700 rounded">{message}</div>}
-      {error && <div className="mb-4 p-2 bg-red-100 text-red-700 rounded">{error}</div>}
-      
-      <form onSubmit={handleSubmit}>
-        <div className="mb-4">
-          <label className="block text-gray-700 mb-2" htmlFor="username">Username</label>
-          <input
-            id="username"
-            type="text"
-            name="username"
-            className="w-full p-2 border rounded"
-            value={formData.username}
-            onChange={handleChange}
-            required
-            minLength="3"
-          />
-        </div>
-        <div className="mb-4">
-          <label className="block text-gray-700 mb-2" htmlFor="email">Email</label>
-          <input
-            id="email"
-            type="email"
-            name="email"
-            className="w-full p-2 border rounded"
-            value={formData.email}
-            onChange={handleChange}
-            required
-          />
-        </div>
-        <div className="mb-4">
-          <label className="block text-gray-700 mb-2" htmlFor="phone">Phone</label>
-          <input
-            id="phone"
-            type="tel"
-            name="phone"
-            className="w-full p-2 border rounded"
-            value={formData.phone}
-            onChange={handleChange}
-          />
-        </div>
-        <button type="submit" className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">
-          Update Profile
-        </button>
-      </form>
-    </div>
-  )
-}
+    <div className="max-w-md mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Profil</h1>
 
-export default Profile
+      {!enEdition ? (
+        <div>
+          <p><strong>Nom :</strong> {utilisateur.nom}</p>
+          <p><strong>Email :</strong> {utilisateur.email}</p>
+          <p><strong>Téléphone :</strong> {utilisateur.telephone}</p>
+          <button
+            onClick={() => setEnEdition(true)}
+            className="mt-4 bg-blue-500 text-white px-4 py-2 rounded"
+          >
+            Modifier
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={gererSoumission}>
+          <div className="mb-3">
+            <label className="block mb-1">Nom :</label>
+            <input
+              type="text"
+              name="nom"
+              value={formulaire.nom}
+              onChange={gererChangement}
+              className="w-full border px-3 py-2 rounded"
+            />
+            {erreurs.nom && <p className="text-red-500 text-sm">{erreurs.nom}</p>}
+          </div>
+          <div className="mb-3">
+            <label className="block mb-1">Email :</label>
+            <input
+              type="email"
+              name="email"
+              value={formulaire.email}
+              onChange={gererChangement}
+              className="w-full border px-3 py-2 rounded"
+            />
+            {erreurs.email && <p className="text-red-500 text-sm">{erreurs.email}</p>}
+          </div>
+          <div className="mb-3">
+            <label className="block mb-1">Téléphone :</label>
+            <input
+              type="text"
+              name="telephone"
+              value={formulaire.telephone}
+              onChange={gererChangement}
+              className="w-full border px-3 py-2 rounded"
+            />
+            {erreurs.telephone && <p className="text-red-500 text-sm">{erreurs.telephone}</p>}
+          </div>
+          <button type="submit" className="bg-green-500 text-white px-4 py-2 rounded mr-2">
+            Enregistrer
+          </button>
+          <button type="button" onClick={gererAnnulation} className="bg-gray-300 px-4 py-2 rounded">
+            Annuler
+          </button>
+        </form>
+      )}
+    </div>
+  );
+};
+
+export default Profile;

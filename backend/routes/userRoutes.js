@@ -1,29 +1,14 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const {
-  getProfile,
-  updateProfile,
-  getAllUsers,
-  getChangeHistory,
-} = require("../controllers/userController");
-const { protect, adminOnly } = require("../middleware/authMiddleware");
-const { body } = require("express-validator");
+const userCtrl = require('../controllers/userController');
+const authJWT = require('../middlewares/authJWT');
+const isAdmin = require('../middlewares/isAdmin');
 
-router.get("/me", protect, getProfile);
-
-router.put(
-  "/me",
-  protect,
-  [
-    body("username").optional().isLength({ min: 3 }),
-    body("email").optional().isEmail(),
-    body("phone").optional().isMobilePhone(),
-  ],
-  updateProfile
-);
-
-// Admin routes
-router.get("/admin/users", protect, adminOnly, getAllUsers);
-router.get("/admin/changes", protect, adminOnly, getChangeHistory);
+router.get('/', authJWT, isAdmin, userCtrl.getAllUsers);
+router.get('/search', authJWT, isAdmin, userCtrl.searchUsers);
+router.get('/activity-logs', authJWT, isAdmin, userCtrl.getActivityLogs);
+router.get('/:id', authJWT, isAdmin, userCtrl.getUserById);
+router.put('/:id', authJWT, isAdmin, userCtrl.updateUser);
+router.delete('/:id', authJWT, isAdmin, userCtrl.deleteUser);
 
 module.exports = router;
